@@ -1,0 +1,30 @@
+[package]
+name = "testapp"
+version = "0.1.0"
+authors = ["Bob McWhirter <bmcwhirt@redhat.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cortex-m = "0.6.2"
+cortex-m-rt = "0.6.12"
+rtt-target = {version = "0.2.0", features = ["cortex-m"] }
+panic-rtt-target = { version = "0.1.0", features = ["cortex-m"] }
+cortex-m-rtic = "0.5.3"
+stm32f4xx-hal = "0.8.3"
+log = "0.4.11"
+heapless = "0.5.5"
+
+[dependencies.embedded-nal]
+path = "../embedded-nal"
+
+[dependencies.nucleo-f401re]
+version = "0.4.1"
+featuers = ["stm32f401"]
+
+[dependencies.rtt-logger]
+path = "../rtt-logger"
+
+[dependencies.esp8266]
+path = "../esp8266"
