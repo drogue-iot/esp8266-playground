@@ -9,22 +9,28 @@ edition = "2018"
 [dependencies]
 cortex-m = "0.6.2"
 cortex-m-rt = "0.6.12"
-rtt-target = {version = "0.2.0", features = ["cortex-m"] }
-panic-rtt-target = { version = "0.1.0", features = ["cortex-m"] }
+rtt-target = {version = "0.2.1", features = ["cortex-m"] }
+panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
 cortex-m-rtic = "0.5.3"
 stm32f4xx-hal = "0.8.3"
 log = "0.4.11"
+#log = "0.3.9"
 heapless = "0.5.5"
+drogue-network = "0.1.0"
+mbedtls-sys-auto = { version = "2.18.5", default-features=false, path="/Users/bob/repos/drogue/rust-mbedtls/mbedtls-sys" }
 
-[dependencies.embedded-nal]
-path = "../embedded-nal"
+
+#[dependencies.mbedtls]
+#version = "0.6.1"
+#default-features = false
+#features = ["legacy_protocols", "time" ]
 
 [dependencies.nucleo-f401re]
 version = "0.4.1"
-featuers = ["stm32f401"]
 
 [dependencies.rtt-logger]
 path = "../rtt-logger"
 
-[dependencies.esp8266]
+[dependencies.drogue-esp8266]
 path = "../esp8266"
+

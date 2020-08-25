@@ -7,14 +7,6 @@ use nucleo_f401re::{
     },
     hal::{
         prelude::*,
-        gpio::{
-            gpioc::{
-                PC10,
-                PC12,
-            },
-            Output,
-            PushPull,
-        },
         serial::{
             config::{Config, Parity, StopBits},
             Serial,
@@ -25,48 +17,45 @@ use nucleo_f401re::{
 };
 
 use rtic::app;
-use rtic::cyccnt::{Instant, U32Ext};
-use rtic::cyccnt::CYCCNT;
+use rtic::cyccnt::{U32Ext};
 use rtt_logger::RTTLogger;
 use rtt_target::rtt_init_print;
 use rtt_target::rprintln;
 //use panic_rtt_target as _;
 
 use log::{
-    set_logger,
-    set_max_level,
-    debug,
     info,
-    error,
 };
 
-use heapless::{spsc::Queue, i, consts::{
-    U1,
-    U2,
-    U1024,
-}, Vec};
+use heapless::{
+    spsc::Queue,
+    i,
+    consts::{
+        U2,
+        U16,
+    },
+};
 
-use esp8266;
-use cortex_m::interrupt::enable;
-use esp8266::ingress::Ingress;
-use core::str::FromStr;
+use drogue_esp8266::{
+    initialize,
+    ingress::Ingress,
+    adapter::Adapter,
+    protocol::Response,
+};
+use core::str::{FromStr};
 
 type SerialTx = Tx<USART6>;
 type SerialRx = Rx<USART6>;
-type EnablePin = PC10<Output<PushPull>>;
-type ResetPin = PC12<Output<PushPull>>;
 
-type ESPAdapter = esp8266::adapter::Adapter<'static, SerialTx>;
+type ESPAdapter = Adapter<'static, SerialTx>;
 
 static LOGGER: RTTLogger = RTTLogger;
 
 use core::{
     sync::atomic::{compiler_fence, Ordering::SeqCst},
-    fmt::Write,
     panic::PanicInfo,
 };
-use esp8266::network::{Sockets, Socket};
-use embedded_nal::{TcpStack, IpAddr, SocketAddr};
+use drogue_network::{Mode, TcpStack, IpAddr, SocketAddr};
 
 #[inline(never)]
 #[panic_handler]
@@ -94,8 +83,8 @@ const APP: () = {
 
     #[init(spawn = [digest])]
     fn init(ctx: init::Context) -> init::LateResources {
-        //rtt_init_print!( BlockIfFull, 2048);
-        rtt_init_print!();
+        rtt_init_print!( BlockIfFull, 2048);
+        //rtt_init_print!();
         log::set_logger(&LOGGER).unwrap();
         log::set_max_level(log::LevelFilter::Trace);
 
@@ -138,14 +127,16 @@ const APP: () = {
         ).unwrap();
 
         serial.listen(nucleo_f401re::hal::serial::Event::Rxne);
-        let (tx, mut rx) = serial.split();
+        let (tx, rx) = serial.split();
 
-        static mut QUEUE: Queue<esp8266::protocol::Response, U2> = Queue(i::Queue::new());
+        static mut RESPONSE_QUEUE: Queue<Response, U2> = Queue(i::Queue::new());
+        static mut NOTIFICATION_QUEUE: Queue<Response, U16> = Queue(i::Queue::new());
 
-        let (adapter, ingress) = esp8266::initialize(
+        let (adapter, ingress) = initialize(
             tx, rx,
             &mut en, &mut reset,
-            unsafe { &mut QUEUE },
+            unsafe { &mut RESPONSE_QUEUE },
+            unsafe { &mut NOTIFICATION_QUEUE },
         ).unwrap();
 
         //let ingress = esp8266::adapter::Ingress::new();
@@ -168,13 +159,15 @@ const APP: () = {
     #[task(schedule = [digest], priority = 2, resources = [ingress])]
     fn digest(mut ctx: digest::Context) {
         ctx.resources.ingress.lock(|ingress| ingress.digest());
-        ctx.schedule.digest(ctx.scheduled + ( DIGEST_DELAY * 100_000).cycles())
+        ctx.schedule.digest(ctx.scheduled + (DIGEST_DELAY * 100_000).cycles())
             .unwrap();
     }
 
     #[task(binds = USART6, priority = 10, resources = [ingress])]
     fn usart(ctx: usart::Context) {
-        ctx.resources.ingress.isr();
+        if let Err(b) = ctx.resources.ingress.isr() {
+            info!("failed to ingress {}", b as char);
+        }
     }
 
     #[idle(resources = [adapter])]
@@ -187,38 +180,59 @@ const APP: () = {
         info!("firmware: {:?}", result);
 
         //let result = ctx.resources.adapter.send(esp8266::protocol::Command::JoinAp { ssid: "oddly", password: "scarletbegonias" });
-        let result = adapter.join( "oddly", "scarletbegonias");
+        let result = adapter.join("oddly", "scarletbegonias");
         info!("joined wifi {:?}", result);
 
         let result = adapter.get_ip_address();
         info!("IP {:?}", result);
 
-        static mut SOCKETS: Sockets<U1, U1024> = Sockets {
-            sockets: Vec( heapless::i::Vec::new() )
-        };
+        let network = adapter.into_network_stack();
+        info!("network intialized");
 
-        unsafe {
-            SOCKETS.sockets.push( Socket::new() );
-        }
-
-        let network = adapter.into_network_stack( unsafe{ &mut SOCKETS} );
-        info!( "network intialized");
-
-        let socket = network.open(embedded_nal::Mode::Blocking).unwrap();
-        info!( "socket {:?}", socket);
+        let socket = network.open(Mode::Blocking).unwrap();
+        info!("socket {:?}", socket);
 
         let socket_addr = SocketAddr::new(
-            IpAddr::from_str( "192.168.1.245").unwrap(),
+            IpAddr::from_str("192.168.1.245").unwrap(),
             80,
         );
 
-        let result = network.connect(socket, socket_addr).unwrap();
+        let mut socket = network.connect(socket, socket_addr).unwrap();
 
         info!("socket connected {:?}", result);
+
+        let result = network.write(&mut socket, b"GET / HTTP/1.1\r\nhost:192.168.1.245\r\n\r\n").unwrap();
+
+        info!("sent {:?}", result);
+
+        loop {
+            let mut buffer = [0; 128];
+            let result = network.read(&mut socket, &mut buffer);
+            match result {
+                Ok(len) => {
+                    if len > 0 {
+                        let s = core::str::from_utf8(&buffer[0..len]);
+                        match s {
+                            Ok(s) => {
+                                info!("recv: {} ", s);
+                            }
+                            Err(_) => {
+                                info!("recv: {} bytes (not utf8)", len);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    info!("ERR: {:?}", e);
+                    break;
+                }
+            }
+        }
 
         loop {
             continue;
         }
+
     }
 
     // spare interrupt used for scheduling software tasks
