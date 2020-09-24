@@ -5,3 +5,6 @@ rustflags = [
   # use the Tlink.x script from the cortex-m-rt crate
   "-C", "link-arg=-Tlink.x",
 ]
+
+#[unstable]
+#features = ["host_dep"]

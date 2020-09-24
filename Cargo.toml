@@ -10,27 +10,28 @@ edition = "2018"
 cortex-m = "0.6.2"
 cortex-m-rt = "0.6.12"
 rtt-target = {version = "0.2.1", features = ["cortex-m"] }
-panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
+#panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
 cortex-m-rtic = "0.5.3"
+#alloc-cortex-m = "0.4.0"
 stm32f4xx-hal = "0.8.3"
 log = "0.4.11"
 #log = "0.3.9"
 heapless = "0.5.5"
-drogue-network = "0.1.0"
-mbedtls-sys-auto = { version = "2.18.5", default-features=false, path="/Users/bob/repos/drogue/rust-mbedtls/mbedtls-sys" }
+#drogue-network = "0.1.0"
+rtt-logger = "0.1.0"
+drogue-network = { version = "0.2.0", path = "../drogue-network" }
+drogue-esp8266 = { version = "0.2.0", path = "../drogue-esp8266" }
+#mbedtls-sys-auto = { version = "2.18.5", default-features=false, path="/Users/bob/repos/drogue/rust-mbedtls/mbedtls-sys" }
 
 
-#[dependencies.mbedtls]
-#version = "0.6.1"
-#default-features = false
-#features = ["legacy_protocols", "time" ]
+[dependencies.drogue-tls]
+version = "0.1.0"
+path = "../drogue-tls/drogue-tls"
+
 
 [dependencies.nucleo-f401re]
 version = "0.4.1"
 
-[dependencies.rtt-logger]
-path = "../rtt-logger"
 
-[dependencies.drogue-esp8266]
-path = "../esp8266"
-
+[profile.release]
+opt-level = 'z'  # Optimize for size.
